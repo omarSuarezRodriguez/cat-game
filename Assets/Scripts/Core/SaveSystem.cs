@@ -133,7 +133,7 @@ namespace WhiskerHaven.Core
             return 0;
         }
 
-        private void OnApplicationQuit()
+        protected override void OnApplicationQuit()
         {
             Save();
             base.OnApplicationQuit();

@@ -1,70 +1,82 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
+using WhiskerHaven.Audio;
 using WhiskerHaven.Core;
-using WhiskerHaven.Utils;
+using WhiskerHaven.Gameplay;
 
 namespace WhiskerHaven.UI
 {
-    public enum UIPanel { HUD, CatCollection, HabitatView, MissionView, Settings, WelcomeBack, Tutorial, AchievementView }
+    public enum UIPanel { HUD, CatCollection, HabitatView, MissionView, AchievementView, Settings }
 
     /// <summary>
-    /// Root UI controller. Manages panel stack, transitions, and global UI events.
+    /// Root UI orchestrator. Auto-discovers panel views from children.
     /// </summary>
     public class UIManager : MonoBehaviour
     {
-        [Header("Panels")]
-        [SerializeField] private MainHUDView           hudPanel;
-        [SerializeField] private CatCollectionView     catCollectionPanel;
-        [SerializeField] private HabitatView           habitatPanel;
-        [SerializeField] private MissionView           missionPanel;
-        [SerializeField] private AchievementView       achievementPanel;
-        [SerializeField] private WelcomeBackView       welcomeBackPanel;
-        [SerializeField] private TutorialView          tutorialPanel;
-        [SerializeField] private SettingsView          settingsPanel;
+        // Auto-discovered — no Inspector wiring needed
+        private MainHUDView        _hud;
+        private CatCollectionView  _cats;
+        private HabitatView        _habitats;
+        private MissionView        _missions;
+        private AchievementView    _achievements;
+        private SettingsView       _settings;
+        private WelcomeBackView    _welcomeBack;
+        private TutorialView       _tutorial;
+        private NotificationBanner _banner;
+        private FloatingNumberPool _floatingPool;
 
-        [Header("Global VFX")]
-        [SerializeField] private FloatingNumberPool    floatingNumbers;
-        [SerializeField] private NotificationBanner    notificationBanner;
+        private UIPanel             _active = UIPanel.HUD;
+        private Stack<UIPanel>      _stack  = new();
 
-        private Stack<UIPanel> _panelStack = new();
-        private UIPanel _activePanel = UIPanel.HUD;
+        private void Awake()
+        {
+            // Discover panels (searched in entire canvas children, including inactive)
+            _hud          = GetComponentInChildren<MainHUDView>(true);
+            _cats         = GetComponentInChildren<CatCollectionView>(true);
+            _habitats     = GetComponentInChildren<HabitatView>(true);
+            _missions     = GetComponentInChildren<MissionView>(true);
+            _achievements = GetComponentInChildren<AchievementView>(true);
+            _settings     = GetComponentInChildren<SettingsView>(true);
+            _welcomeBack  = GetComponentInChildren<WelcomeBackView>(true);
+            _tutorial     = GetComponentInChildren<TutorialView>(true);
+            _banner       = GetComponentInChildren<NotificationBanner>(true);
+            _floatingPool = GetComponentInChildren<FloatingNumberPool>(true);
+        }
 
         // ── Init ─────────────────────────────────────────────────────────────
         public void Init(bool showWelcomeBack)
         {
-            hudPanel?.Init();
-            catCollectionPanel?.Init();
-            habitatPanel?.Init();
-            missionPanel?.Init();
-            achievementPanel?.Init();
-            settingsPanel?.Init();
-            floatingNumbers?.Init();
-
-            // Subscribe to events
             EventBus.Subscribe<OnAchievementUnlocked>(OnAchievement);
             EventBus.Subscribe<OnMissionCompleted>(OnMissionComplete);
             EventBus.Subscribe<OnResourceChanged>(OnResourceChanged);
             EventBus.Subscribe<OnCatRescued>(OnCatRescued);
             EventBus.Subscribe<OnOfflineProgressReady>(OnOfflineProgress);
 
-            // Show entry point
-            bool tutorialNeeded = !GameManager.Instance.Save.tutorialComplete;
+            // Deactivate non-HUD panels
+            _cats?.gameObject.SetActive(false);
+            _habitats?.gameObject.SetActive(false);
+            _missions?.gameObject.SetActive(false);
+            _achievements?.gameObject.SetActive(false);
+            _settings?.gameObject.SetActive(false);
 
-            SetAllPanelsInactive();
-            hudPanel?.gameObject.SetActive(true);
+            _hud?.gameObject.SetActive(true);
+            _hud?.Init(this);
 
-            if (tutorialNeeded && !GameManager.Instance.Config.skipTutorialInEditor)
+            _floatingPool?.Init();
+
+            bool needTutorial = !GameManager.Instance.Save.tutorialComplete;
+
+            if (needTutorial && !GameManager.Instance.Config.skipTutorialInEditor)
             {
-                ShowTutorial();
+                _tutorial?.gameObject.SetActive(true);
+                _tutorial?.StartTutorial();
             }
             else if (showWelcomeBack)
             {
-                // WelcomeBack shown on top of HUD after offline progress calc
-                welcomeBackPanel?.gameObject.SetActive(true);
-                welcomeBackPanel?.Show();
+                _welcomeBack?.gameObject.SetActive(true);
+                _welcomeBack?.Show();
             }
-
-            _activePanel = UIPanel.HUD;
         }
 
         private void OnDestroy()
@@ -76,95 +88,78 @@ namespace WhiskerHaven.UI
             EventBus.Unsubscribe<OnOfflineProgressReady>(OnOfflineProgress);
         }
 
-        // ── Panel Navigation ─────────────────────────────────────────────────
+        // ── Navigation ────────────────────────────────────────────────────────
         public void ShowPanel(UIPanel panel)
         {
-            if (_activePanel == panel) return;
+            if (_active == panel) { GetView(panel)?.Show(); return; }
 
-            GetPanelView(_activePanel)?.Hide();
-            _panelStack.Push(_activePanel);
-            _activePanel = panel;
-            GetPanelView(panel)?.Show();
+            GetView(_active)?.Hide();
+            _stack.Push(_active);
+            _active = panel;
+
+            var view = GetView(panel);
+            if (view != null)
+            {
+                view.gameObject.SetActive(true);
+                view.Show();
+            }
             AudioManager.Instance?.PlaySFX("ui_tab_switch");
         }
 
         public void GoBack()
         {
-            if (_panelStack.Count == 0) return;
-            GetPanelView(_activePanel)?.Hide();
-            _activePanel = _panelStack.Pop();
-            GetPanelView(_activePanel)?.Show();
+            if (_stack.Count == 0) return;
+            GetView(_active)?.Hide();
+            _active = _stack.Pop();
+            GetView(_active)?.Show();
             AudioManager.Instance?.PlaySFX("ui_back");
         }
 
-        public void ShowHUD()      => ShowPanel(UIPanel.HUD);
-        public void ShowCats()     => ShowPanel(UIPanel.CatCollection);
-        public void ShowHabitats() => ShowPanel(UIPanel.HabitatView);
-        public void ShowMissions() => ShowPanel(UIPanel.MissionView);
+        public void ShowHUD()          => ShowPanel(UIPanel.HUD);
+        public void ShowCats()         => ShowPanel(UIPanel.CatCollection);
+        public void ShowHabitats()     => ShowPanel(UIPanel.HabitatView);
+        public void ShowMissions()     => ShowPanel(UIPanel.MissionView);
         public void ShowAchievements() => ShowPanel(UIPanel.AchievementView);
-        public void ShowSettings() => ShowPanel(UIPanel.Settings);
-        public void ShowTutorial()
-        {
-            tutorialPanel?.gameObject.SetActive(true);
-            tutorialPanel?.StartTutorial();
-        }
+        public void ShowSettings()     => ShowPanel(UIPanel.Settings);
 
-        private BaseView GetPanelView(UIPanel panel) => panel switch
+        private BaseView GetView(UIPanel p) => p switch
         {
-            UIPanel.HUD             => hudPanel,
-            UIPanel.CatCollection   => catCollectionPanel,
-            UIPanel.HabitatView     => habitatPanel,
-            UIPanel.MissionView     => missionPanel,
-            UIPanel.AchievementView => achievementPanel,
-            UIPanel.Settings        => settingsPanel,
-            _                       => null
+            UIPanel.HUD             => _hud,
+            UIPanel.CatCollection   => _cats,
+            UIPanel.HabitatView     => _habitats,
+            UIPanel.MissionView     => _missions,
+            UIPanel.AchievementView => _achievements,
+            UIPanel.Settings        => _settings,
+            _ => null
         };
 
-        private void SetAllPanelsInactive()
-        {
-            catCollectionPanel?.gameObject.SetActive(false);
-            habitatPanel?.gameObject.SetActive(false);
-            missionPanel?.gameObject.SetActive(false);
-            achievementPanel?.gameObject.SetActive(false);
-            welcomeBackPanel?.gameObject.SetActive(false);
-            tutorialPanel?.gameObject.SetActive(false);
-            settingsPanel?.gameObject.SetActive(false);
-        }
-
-        // ── Floating Numbers ──────────────────────────────────────────────────
-        public void SpawnFloatingNumber(Vector3 worldPos, double amount, bool isPositive = true)
-        {
-            floatingNumbers?.Spawn(worldPos, amount, isPositive);
-        }
+        // ── Floating Numbers ─────────────────────────────────────────────────
+        public void SpawnFloatingNumber(Vector3 worldPos, double amount, bool positive = true)
+            => _floatingPool?.Spawn(worldPos, amount, positive);
 
         // ── Event Handlers ────────────────────────────────────────────────────
         private void OnAchievement(OnAchievementUnlocked evt)
         {
-            var data = AchievementSystem.Instance?.GetAll()
-                .Find(a => a.achievementId == evt.AchievementId);
-            notificationBanner?.Show($"Achievement: {data?.achievementName ?? evt.AchievementId}", NotificationType.Achievement);
+            var d = AchievementSystem.Instance?.GetAll()?.Find(a => a.achievementId == evt.AchievementId);
+            _banner?.Show($"🏆 {d?.achievementName ?? evt.AchievementId}", NotificationType.Achievement);
         }
 
         private void OnMissionComplete(OnMissionCompleted evt)
         {
-            var data = MissionSystem.Instance?.GetData(evt.MissionId);
-            notificationBanner?.Show($"Mission complete: {data?.missionName ?? evt.MissionId}", NotificationType.Mission);
+            var d = MissionSystem.Instance?.GetData(evt.MissionId);
+            _banner?.Show($"✅ Mission complete: {d?.missionName ?? evt.MissionId}", NotificationType.Mission);
         }
 
         private void OnResourceChanged(OnResourceChanged evt)
-        {
-            hudPanel?.UpdateResourceDisplay(evt.Type, evt.NewAmount);
-        }
+            => _hud?.UpdateResource(evt.Type, evt.NewAmount);
 
         private void OnCatRescued(OnCatRescued evt)
         {
-            var data = CatManager.Instance?.GetData(evt.CatId);
-            notificationBanner?.Show($"{data?.catName ?? evt.CatId} joined the haven!", NotificationType.CatRescue);
+            var d = CatManager.Instance?.GetData(evt.CatId);
+            _banner?.Show($"🐱 {d?.catName ?? evt.CatId} joined the haven!", NotificationType.CatRescue);
         }
 
         private void OnOfflineProgress(OnOfflineProgressReady evt)
-        {
-            welcomeBackPanel?.SetData(evt.SnugglesEarned, evt.TimeAwaySeconds);
-        }
+            => _welcomeBack?.SetData(evt.SnugglesEarned, evt.TimeAwaySeconds);
     }
 }

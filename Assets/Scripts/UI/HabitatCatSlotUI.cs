@@ -1,51 +1,70 @@
-using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 using WhiskerHaven.Gameplay;
+using static WhiskerHaven.UI.UIFactory;
 
 namespace WhiskerHaven.UI
 {
     public class HabitatCatSlotUI : MonoBehaviour
     {
-        [SerializeField] private Image           catPortrait;
-        [SerializeField] private TextMeshProUGUI catNameText;
-        [SerializeField] private GameObject      emptySlotIndicator;
-        [SerializeField] private Button          removeBtn;
-        [SerializeField] private Slider          miniHappinessBar;
+        private Image            _portrait;
+        private TextMeshProUGUI  _name;
+        private Slider           _happBar;
+        private Button           _removeBtn;
+        private GameObject       _emptySlot;
 
-        private string _catId;
-        private string _habitatId;
+        private string _catId, _habitatId;
 
         public void Populate(string catId, string habitatId)
         {
             _catId     = catId;
             _habitatId = habitatId;
+            if (_portrait == null) Build();
 
             bool hasCat = !string.IsNullOrEmpty(catId);
-            if (emptySlotIndicator) emptySlotIndicator.SetActive(!hasCat);
-            if (catPortrait)        catPortrait.gameObject.SetActive(hasCat);
-            if (catNameText)        catNameText.gameObject.SetActive(hasCat);
-            if (removeBtn)          removeBtn.gameObject.SetActive(hasCat);
-            if (miniHappinessBar)   miniHappinessBar.gameObject.SetActive(hasCat);
+            _emptySlot?.SetActive(!hasCat);
+            if (_portrait)  _portrait.gameObject.SetActive(hasCat);
+            if (_name)      _name.gameObject.SetActive(hasCat);
+            if (_happBar)   _happBar.gameObject.SetActive(hasCat);
+            if (_removeBtn) _removeBtn.gameObject.SetActive(hasCat);
 
             if (!hasCat) return;
-
             var data  = CatManager.Instance?.GetData(catId);
             var entry = CatManager.Instance?.GetEntry(catId);
+            if (_portrait && data != null) _portrait.sprite = data.portrait;
+            if (_name && data != null)     _name.text       = data.catName;
+            if (_happBar && entry != null && data != null)
+                _happBar.value = entry.happiness / data.maxHappiness;
 
-            if (catPortrait && data != null)  catPortrait.sprite = data.portrait;
-            if (catNameText && data != null)  catNameText.text   = data.catName;
-            if (miniHappinessBar && entry != null && data != null)
-                miniHappinessBar.value = entry.happiness / data.maxHappiness;
-
-            removeBtn?.onClick.RemoveAllListeners();
-            removeBtn?.onClick.AddListener(OnRemove);
+            _removeBtn?.onClick.RemoveAllListeners();
+            _removeBtn?.onClick.AddListener(() => { CatManager.Instance?.UnassignCat(_catId); Populate(null, _habitatId); });
         }
 
-        private void OnRemove()
+        private void Build()
         {
-            CatManager.Instance?.UnassignCat(_catId);
-            Populate(null, _habitatId);
+            var bg = GetComponent<Image>() ?? gameObject.AddComponent<Image>();
+            bg.color = CREAM_ALT;
+            VLayout(gameObject, 3, new RectOffset(4, 4, 4, 4));
+
+            // Empty slot indicator
+            _emptySlot = Group(gameObject, "EmptySlot");
+            Text(_emptySlot.transform, "Plus", "+", 24, new Color(0, 0, 0, 0.2f), TextAlignmentOptions.Center);
+            LE(_emptySlot, prefH: 44);
+
+            // Cat portrait
+            var portGo = Panel(transform, "Portrait", new Color(0.8f, 0.8f, 0.8f, 0.4f));
+            LE(portGo, prefH: 40); _portrait = portGo.GetComponent<Image>();
+
+            _name    = Text(transform, "Name", "", 9, TEXT_D, TextAlignmentOptions.Center);
+            LE(_name.gameObject, prefH: 12);
+
+            _happBar = SliderH(transform, "HappBar", SUCCESS, 8);
+            _happBar.interactable = false;
+            LE(_happBar.gameObject, prefH: 8);
+
+            _removeBtn = Btn(transform, "Remove", "✕", DANGER, TEXT_L, 10);
+            LE(_removeBtn.gameObject, prefH: 18);
         }
     }
 }

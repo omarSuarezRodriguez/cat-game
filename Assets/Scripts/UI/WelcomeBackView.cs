@@ -1,56 +1,77 @@
-using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
+using WhiskerHaven.Audio;
+using WhiskerHaven.Core;
 using WhiskerHaven.Utils;
+using static WhiskerHaven.UI.UIFactory;
 
 namespace WhiskerHaven.UI
 {
-    /// <summary>
-    /// Modal shown after returning from offline session.
-    /// </summary>
     public class WelcomeBackView : MonoBehaviour
     {
-        [SerializeField] private TextMeshProUGUI awayTimeText;
-        [SerializeField] private TextMeshProUGUI earnedText;
-        [SerializeField] private TextMeshProUGUI efficiencyText;
-        [SerializeField] private Button          collectButton;
-        [SerializeField] private CanvasGroup     canvasGroup;
-
-        private double _earned;
+        private TextMeshProUGUI _awayText, _earnedText, _effText;
+        private CanvasGroup     _cg;
+        private double          _earned;
 
         private void Awake()
         {
-            collectButton?.onClick.AddListener(OnCollect);
+            _cg = GetComponent<CanvasGroup>() ?? gameObject.AddComponent<CanvasGroup>();
+            BuildUI();
         }
 
-        public void SetData(double snugglesEarned, double secondsAway)
+        private void BuildUI()
         {
-            _earned = snugglesEarned;
-            if (awayTimeText) awayTimeText.text = $"Away for {NumberFormatter.FormatTime(secondsAway)}";
-            if (earnedText)   earnedText.text   = $"+{NumberFormatter.Format(snugglesEarned)} Snuggles";
-            if (efficiencyText) efficiencyText.text = $"({GameManager.Instance.Config.offlineEfficiency * 100:F0}% efficiency)";
+            // Dark backdrop
+            var backdrop = Panel(transform, "Backdrop", new Color(0, 0, 0, 0.7f));
+            Stretch(backdrop);
+
+            // Modal card
+            var card = Panel(transform, "Card", CREAM);
+            Center(card, new Vector2(480, 320));
+            VLayout(card, 16, new RectOffset(32, 32, 28, 28));
+
+            Text(card.transform, "Title", "🌙  Welcome Back!", 26, TEXT_D, TextAlignmentOptions.Center, FontStyles.Bold);
+            _awayText  = Text(card.transform, "Away", "Away for 0s", 15, BG_LIGHT, TextAlignmentOptions.Center);
+            LE(_awayText.gameObject, prefH: 24);
+            _earnedText = Text(card.transform, "Earned", "+0 Snuggles", 28, SUCCESS, TextAlignmentOptions.Center, FontStyles.Bold);
+            LE(_earnedText.gameObject, prefH: 36);
+            _effText    = Text(card.transform, "Eff", "(50% offline efficiency)", 12, new Color(0.4f, 0.4f, 0.4f), TextAlignmentOptions.Center);
+            LE(_effText.gameObject, prefH: 18);
+
+            // Divider
+            var div = Panel(card.transform, "Div", new Color(0, 0, 0, 0.1f));
+            LE(div, prefH: 2);
+
+            var collectBtn = Btn(card.transform, "CollectBtn", "🐾  Collect & Continue", AMBER, TEXT_L, 16);
+            LE(collectBtn.gameObject, prefH: 52);
+            collectBtn.onClick.AddListener(Collect);
+        }
+
+        public void SetData(double snuggles, double secondsAway)
+        {
+            _earned = snuggles;
+            if (_awayText)  _awayText.text  = $"Away for {NumberFormatter.FormatTime(secondsAway)}";
+            if (_earnedText) _earnedText.text = $"+{NumberFormatter.Format(snuggles)} Snuggles";
+            float eff = GameManager.Instance?.Config?.offlineEfficiency ?? 0.5f;
+            if (_effText) _effText.text = $"({(int)(eff * 100)}% offline efficiency)";
         }
 
         public void Show()
         {
             gameObject.SetActive(true);
-            if (canvasGroup) { canvasGroup.alpha = 0f; canvasGroup.interactable = true; canvasGroup.blocksRaycasts = true; }
+            _cg.alpha = 0f;
             StartCoroutine(FadeIn());
         }
 
         private System.Collections.IEnumerator FadeIn()
         {
             float t = 0;
-            while (t < 0.3f)
-            {
-                t += Time.deltaTime;
-                if (canvasGroup) canvasGroup.alpha = t / 0.3f;
-                yield return null;
-            }
-            if (canvasGroup) canvasGroup.alpha = 1f;
+            while (t < 0.35f) { t += Time.deltaTime; _cg.alpha = t / 0.35f; yield return null; }
+            _cg.alpha = 1f;
         }
 
-        private void OnCollect()
+        private void Collect()
         {
             AudioManager.Instance?.PlaySFX("coin_collect");
             gameObject.SetActive(false);

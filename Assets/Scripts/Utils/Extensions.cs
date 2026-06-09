@@ -31,6 +31,9 @@ namespace WhiskerHaven.Utils
                 UnityEngine.Object.Destroy(parent.GetChild(i).gameObject);
         }
 
+        public static void DestroyAllChildren(this UnityEngine.RectTransform parent)
+            => DestroyAllChildren((Transform)parent);
+
         // --- Color ---
         public static Color WithAlpha(this Color color, float alpha)
         {

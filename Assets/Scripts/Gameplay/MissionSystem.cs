@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using WhiskerHaven.Audio;
 using WhiskerHaven.Core;
 using WhiskerHaven.Data;
 

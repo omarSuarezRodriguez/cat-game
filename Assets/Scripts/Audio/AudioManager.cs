@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using WhiskerHaven.Utils;
 
-namespace WhiskerHaven
+namespace WhiskerHaven.Audio
 {
     [System.Serializable]
     public class SFXClip

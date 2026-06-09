@@ -1,4 +1,6 @@
 using UnityEngine;
+using WhiskerHaven.Audio;
+using WhiskerHaven.Gameplay;
 
 namespace WhiskerHaven.Core
 {
